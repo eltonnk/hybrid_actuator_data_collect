@@ -30,21 +30,22 @@
 #include "csv.h"
 #include "lti_sys.h"
 #include "hil.h"
+#include "prbs.h"
 #include "quanser_signal.h"
 #include "quanser_messages.h"
 #include "quanser_thread.h"
 
 /** Number of samples to collect to compute current sense offsets
  */
-#define N_SAMPLES_CURRENT_OFFSET (500)
+#define N_SAMPLES_CURRENT_OFFSET (2000)
 
 /** Number of samples to collect.
  */
-#define N_SAMPLES (10000)
+#define N_SAMPLES (20000)
 
 /** Number of samples to zero out in inputs.
  */
-#define N_PAD (2000)
+#define N_PAD (0)
 
 /** Number of turns user must turn the pulley anti-clockwise to start the
  * control loop.
@@ -58,11 +59,11 @@
 
 /** Control frequency (Hz).
  */
-#define FREQUENCY (500.0)
+#define FREQUENCY (1000.0)
 
 /** Encoder ratio for all encoders, before capstans (rad/count).
  */
-#define K_ENC (-2.0 * M_PI / (2.0*2048))
+#define K_ENC (-2.0 * M_PI / (4.0*2048))
 
 
 /** Amplifier gain (A/V).
@@ -169,6 +170,27 @@ void volt_sg_to_measurement(t_double volt[3], t_double volt_offset[3], t_double 
 void clamp(t_double current[2], t_double limit, t_double saturated_current[2], 
            t_double saturation_status[2]);
 
+/** Generate a smoothed pseudorandom binary sequence with zero-padding.
+ *
+ * `n_pad` can lead to `min_period` being violated once at the beginning of the
+ * sequence.
+ *
+ * @param[in]     cutoff Cutoff frequency (Hz).
+ * @param[in]      n_pad Number of timesteps to replace with zeros.
+ * @param[in]  min_value Minimum waveform value.
+ * @param[in]  max_value Maximum waveform value.
+ * @param[in] min_period Minimum high or low period (s)
+ * @param[in]     f_samp Sampling frequency (Hz).
+ * @param[in]       seed Random seed.
+ * @param[in]        len Length of sequence to generate.
+ * @param[out]       out Array to store sequence.
+ *
+ * @retval        PRBS_SUCCESS Successfully generated sequence.
+ * @retval PRBS_WARNING_REPEAT Successfully generated sequence, but it repeats.
+ */
+PrbsStatus smooth_prbs(double cutoff, size_t n_pad, double min_value,
+                       double max_value, double min_period, double f_samp,
+                       uint16_t seed, size_t len, double *out);
 
 /** Generate a chirp signal.
  *
@@ -249,11 +271,30 @@ int main(int argc, char *argv[])
 #define NUM_ANALOG_IN_CHANNELS ARRAY_LENGTH(analog_in_channels)
 #define NUM_ENCODER_CHANNELS ARRAY_LENGTH(encoder_channels)
 
-// Desired amplifier output current signal
+  // Desired amplifier output current signal
+
+  t_int16 seed_m;
+  t_int16 seed_b;
+
+  const t_int16 lower = 1;
+  const t_int16 upper = 999;
+  srand(time(NULL));
+  seed_m = lower + rand() % (upper - lower + 1);
+  seed_b = lower + rand() % (upper - lower + 1);
+
+
   t_double target_current[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0};
-  //chirp(N_PAD, 0.1, 0.25, 2, FREQUENCY, N_SAMPLES - N_PAD, target_force_x);
-  square(N_PAD, 0.1, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[0]);
-  square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[1]);
+  // square(N_PAD, 0.1, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[0]);
+  // square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[1]);
+
+  const float voltage_m_amp = 0.75;
+  const float voltage_m_offset = 0.1;
+  smooth_prbs(0.0, N_PAD, voltage_m_offset-voltage_m_amp, voltage_m_offset + voltage_m_amp, 0.005, FREQUENCY, seed_m, 
+              N_SAMPLES - N_PAD, target_current[0]);
+  const float voltage_b_amp = 0.07;
+  const float voltage_b_offset = 0.07;
+  smooth_prbs(0.0, N_PAD, voltage_b_offset-voltage_b_amp, voltage_b_offset + voltage_b_amp, 0.05, FREQUENCY, seed_b, 
+              N_SAMPLES - N_PAD, target_current[1]);
 
   // accumulated current offsets (A)
   t_double analog_input_offsets[N_SAMPLES][NUM_ANALOG_IN_CHANNELS] = {0};
@@ -487,8 +528,8 @@ int main(int argc, char *argv[])
         
         // TODO : uncomment section below once the sensors are tested
 
-        //analog_outputs[0] = target_current[0][k];
-        // analog_outputs[1] = target_current[1][k];
+        analog_outputs[0] = target_current[0][k];
+        analog_outputs[1] = target_current[1][k];
 
         // Saturate current command
         clamp(analog_outputs, ANALOG_MAX_V, sat_analog_outputs, sat_status);
@@ -740,6 +781,40 @@ void clamp(t_double current[2], t_double limit, t_double saturated_current[2], t
       saturation_status[i] = 0.0;
     }
   }
+}
+
+PrbsStatus smooth_prbs(double cutoff, size_t n_pad, double min_value,
+                       double max_value, double min_period, double f_samp,
+                       uint16_t seed, size_t len, double *out) {
+  // Generate PRBS
+  t_double *raw_prbs = (t_double *)calloc(len, sizeof(t_double));
+  PrbsStatus status =
+      prbs(min_value, max_value, min_period, f_samp, seed, len, raw_prbs);
+  for (int i = 0; i < n_pad; i++) {
+    raw_prbs[i] = 0.0;
+  }
+  if (cutoff <= 0.0) {
+    // Copy
+    for (int i = 0; i < len; i++) {
+      out[i] = raw_prbs[i];
+    }
+  } else {
+    // Create filter
+    LtiSys filt;
+    t_double num_filt[] = {(cutoff / f_samp) / (1.0 + cutoff / f_samp), 0};
+    t_double den_filt[] = {-1.0 / (1.0 + cutoff / f_samp)};
+    t_double num_buff_filt[2] = {0};
+    t_double den_buff_filt[1] = {0};
+    ltisys_init(&filt, LTI_SYS_NO_OUTPUT_SAT, num_filt, den_filt, num_buff_filt,
+                den_buff_filt, 2, 1);
+    // Run filter
+    for (int i = 0; i < len; i++) {
+      out[i] = ltisys_output(&filt, raw_prbs[i]);
+    }
+  }
+  // Clean up
+  free(raw_prbs);
+  return status;
 }
 
 void chirp(size_t n_pad, double amplitude, double min_freq, double max_freq,

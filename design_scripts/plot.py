@@ -23,30 +23,48 @@ if __name__ == "__main__":
     df_panto = pd.read_csv(data_files[-1], sep=", ")
 
     t = np.array(df_panto["t"])
-    current = np.array(df_panto["current_motor"])
+    current_m = np.array(df_panto["current_motor"])
+    current_b = np.array(df_panto["current_brake"])
     torque = np.array(df_panto["torque"])
-    omega = np.array(df_panto["theta"])
-    cmd_voltage_motor = np.array(df_panto["cmd_voltage_motor"])
+    omega = np.array(df_panto["omega"])
+    cmd_voltage_m = np.array(df_panto["cmd_voltage_motor"])
+    cmd_voltage_b = np.array(df_panto["cmd_voltage_brake"])
 
-    fig2, axes = plt.subplots(4, 1)
+    fig2, axes = plt.subplots(4, 2)
 
-    axes[0].plot(t, current, 'r')
-    axes[1].plot(t, torque, 'g')
-    axes[2].plot(t, omega, 'b')
-    axes[3].plot(t, cmd_voltage_motor, 'y')
+    axes[0][0].plot(t, current_m, 'r')
+    axes[1][0].plot(t, torque, 'g')
+    axes[2][0].plot(t, omega, 'b')
+    axes[3][0].plot(t, cmd_voltage_m, 'y')
 
-    axes[0].set_ylabel('Current (A)')
-    axes[1].set_ylabel('Torque (N)')
-    axes[2].set_ylabel(r'$\omega$ (rad/s)')
-    axes[3].set_ylabel(r'Voltage Cmd(V)')
+    axes[0][0].set_ylabel('Motor Current (A)')
+    axes[1][0].set_ylabel('Torque (N)')
+    axes[2][0].set_ylabel(r'$\omega$ (rad/s)')
+    axes[3][0].set_ylabel(r'Motor Voltage Cmd(V)')
 
-    axes[0].set_xlabel('Time (sec)')
-    axes[1].set_xlabel('Time (sec)')
-    axes[2].set_xlabel('Time (sec)')
-    axes[3].set_xlabel('Time (sec)')
+    axes[0][0].set_xlabel('Time (sec)')
+    axes[1][0].set_xlabel('Time (sec)')
+    axes[2][0].set_xlabel('Time (sec)')
+    axes[3][0].set_xlabel('Time (sec)')
+
+    axes[0][1].plot(t, current_b, 'r')
+    axes[1][1].plot(t, torque, 'g')
+    axes[2][1].plot(t, omega, 'b')
+    axes[3][1].plot(t, cmd_voltage_b, 'y')
+
+    axes[0][1].set_ylabel('Brake Current (A)')
+    axes[1][1].set_ylabel('Torque (N)')
+    axes[2][1].set_ylabel(r'$\omega$ (rad/s)')
+    axes[3][1].set_ylabel(r'Brake Voltage Cmd(V)')
+
+    axes[0][1].set_xlabel('Time (sec)')
+    axes[1][1].set_xlabel('Time (sec)')
+    axes[2][1].set_xlabel('Time (sec)')
+    axes[3][1].set_xlabel('Time (sec)')
 
     for ax in axes:
-        ax.grid()
+        for a in ax:
+            a.grid()
     fig2.legend()
 
     plt.show()
