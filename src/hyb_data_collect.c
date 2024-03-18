@@ -36,23 +36,33 @@
 
 /** Number of samples to collect to compute current sense offsets
  */
-#define N_SAMPLES_CURRENT_OFFSET (1000)
+#define N_SAMPLES_CURRENT_OFFSET (500)
 
 /** Number of samples to collect.
  */
-#define N_SAMPLES (5000)
+#define N_SAMPLES (10000)
 
 /** Number of samples to zero out in inputs.
  */
-#define N_PAD (4000)
+#define N_PAD (2000)
+
+/** Number of turns user must turn the pulley anti-clockwise to start the
+ * control loop.
+ */
+#define NBR_IDLE_TURNS (2)
+
+/** Angle (in rad) the pulley must be turned to to start the
+ * control loop.
+ */
+#define ANGLE_IDLE (NBR_IDLE_TURNS* 2.0 * M_PI)
 
 /** Control frequency (Hz).
  */
-#define FREQUENCY (1000.0)
+#define FREQUENCY (500.0)
 
 /** Encoder ratio for all encoders, before capstans (rad/count).
  */
-#define K_ENC (2.0 * M_PI / 2048)
+#define K_ENC (-2.0 * M_PI / (2.0*2048))
 
 
 /** Amplifier gain (A/V).
@@ -84,7 +94,7 @@
 
 /** Maximum length of a Quanser message.
  */
-#define MESSAGE_LEN (512)\
+#define MESSAGE_LEN (512)
 
 typedef enum {
   HYBRID_OPEN_BOARD,
@@ -93,6 +103,7 @@ typedef enum {
   HYBRID_START_TASK,
   HYBRID_SAVE_CURRENT_OFFSET,
   HYBRID_COMPUTE_CURRENT_OFFSET,
+  HYBRID_IDLE,
   HYBRID_RUN,
   HYBRID_STOP_TASK,
   HYBRID_DELETE_TASK,
@@ -242,7 +253,7 @@ int main(int argc, char *argv[])
   t_double target_current[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0};
   //chirp(N_PAD, 0.1, 0.25, 2, FREQUENCY, N_SAMPLES - N_PAD, target_force_x);
   square(N_PAD, 0.1, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[0]);
-  square(N_PAD, -0.1, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[1]);
+  square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[1]);
 
   // accumulated current offsets (A)
   t_double analog_input_offsets[N_SAMPLES][NUM_ANALOG_IN_CHANNELS] = {0};
@@ -303,6 +314,7 @@ int main(int argc, char *argv[])
           state = HYBRID_HOME;
         } else {
           print_error(result);
+          printf("Error raised when opening connection to board: \n");
           state = HYBRID_CLOSE_BOARD;
           error_occured = true;
         }
@@ -317,9 +329,11 @@ int main(int argc, char *argv[])
         // Check result
         if (result == 0) {
           printf("Homing succesful.\n"
-          "Starting data collection.\n");
+          "Please wind the pulley anti-clockwise %u full turns to start "
+          "data collection.\n", NBR_IDLE_TURNS);
           state = HYBRID_CREATE_TASK;
         } else {
+          printf("Error raised when homing: \n");
           print_error(result);
           state = HYBRID_CLOSE_BOARD;
           error_occured = true;
@@ -347,6 +361,7 @@ int main(int argc, char *argv[])
         if (result == 0) {
           state = HYBRID_START_TASK;
         } else {
+          printf("Error raised when creating task: \n");
           print_error(result);
           state = HYBRID_DELETE_TASK;
           error_occured = true;
@@ -361,6 +376,7 @@ int main(int argc, char *argv[])
         if (result == 0) {
           state = HYBRID_SAVE_CURRENT_OFFSET;
         } else {
+          printf("Error raised when starting task: \n");
           print_error(result);
           state = HYBRID_STOP_TASK;
           error_occured = true;
@@ -381,8 +397,7 @@ int main(int argc, char *argv[])
           task, 1, 
           analog_offset, encoder_counts, 
           NULL, encoder_count_vel,
-          sat_analog_outputs,
-          NULL, NULL,
+          sat_analog_outputs, NULL, 
           NULL, NULL
         );
 
@@ -391,6 +406,7 @@ int main(int argc, char *argv[])
         analog_input_offsets[k_cur_off][2] = analog_offset[2];
 
         if (result < 0) {
+          printf("Error raised when computing current offset: \n");
           print_error(result);
           state = HYBRID_STOP_TASK;
           error_occured = true;
@@ -421,8 +437,43 @@ int main(int argc, char *argv[])
         analog_offset[0] = analog_offset[0] / N_SAMPLES_CURRENT_OFFSET;
         analog_offset[1] = analog_offset[1] / N_SAMPLES_CURRENT_OFFSET;
         analog_offset[2] = analog_offset[2] / N_SAMPLES_CURRENT_OFFSET;
-        state = HYBRID_RUN;
+        state = HYBRID_IDLE;
         
+        break;
+      }
+
+      case HYBRID_IDLE:
+      {
+        // Check for interrrupt
+        if (sigint) {
+          state = HYBRID_STOP_TASK;
+          break;
+        }
+
+        // Read encoder
+        t_error result = hil_task_read_write(
+          task, 1, 
+          analog_inputs, encoder_counts, 
+          NULL, encoder_count_vel,
+          sat_analog_outputs, NULL, 
+          NULL, NULL
+        );
+        
+        if (result < 0) {
+          printf("Error raised when waiting for user to turn pulley to starting position: \n");
+          print_error(result);
+          state = HYBRID_STOP_TASK;
+          error_occured = true;
+          break;
+        }
+        // Convert encoder counts
+        count_to_rad(encoder_counts, encoder_offsets, axis_0_radians);
+        // Check starting condition, wait for user to turn the pulley to starting position
+        if ((axis_0_radians[0]) >= ANGLE_IDLE ) {
+          // we zero at the new angle after two turns so that we can see deviation around that value.
+          encoder_offsets[0] = encoder_counts[0];
+          state = HYBRID_RUN;
+        }
         break;
       }
 
@@ -436,23 +487,23 @@ int main(int argc, char *argv[])
         
         // TODO : uncomment section below once the sensors are tested
 
-        // analog_outputs[0] = target_current[0][k];
+        //analog_outputs[0] = target_current[0][k];
         // analog_outputs[1] = target_current[1][k];
 
-        //  // Saturate current command
-        // clamp(analog_outputs, ANALOG_MAX_V, sat_analog_outputs, sat_status);
+        // Saturate current command
+        clamp(analog_outputs, ANALOG_MAX_V, sat_analog_outputs, sat_status);
 
 
         t_error result = hil_task_read_write(
           task, 1, 
           analog_inputs, encoder_counts, 
           NULL, encoder_count_vel,
-          sat_analog_outputs,
-          NULL, NULL,
+          sat_analog_outputs, NULL, 
           NULL, NULL
         );
 
         if (result < 0) {
+          printf("Error raised when read/writing to DAC: \n");
           print_error(result);
           state = HYBRID_STOP_TASK;
           error_occured = true;
@@ -535,6 +586,7 @@ int main(int argc, char *argv[])
         t_error result = hil_task_stop(task);
         // Check it it was successful
         if (result != 0) {
+          printf("Error raised when stopping task: \n");
           print_error(result);
           error_occured = true;
         }
@@ -549,6 +601,7 @@ int main(int argc, char *argv[])
 
         // Check it it was successful
         if (result != 0) {
+          printf("Error raised when stopping motor and brake: \n");
           print_error(result);
           error_occured = true;
         }
@@ -564,6 +617,7 @@ int main(int argc, char *argv[])
         t_error result = hil_task_delete(task);
         // Check it it was successful
         if (result != 0) {
+          printf("Error raised when deleting task: \n");
           print_error(result);
           error_occured = true;
         }
@@ -578,6 +632,7 @@ int main(int argc, char *argv[])
         t_error result = hil_close(board);
         // Check it it was successful
         if (result != 0) {
+          printf("Error raised when closing board: \n");
           print_error(result);
           error_occured = true;
         }
@@ -592,6 +647,7 @@ int main(int argc, char *argv[])
         t_error result = hil_close_all();
         // Check it it was successful
         if (result != 0) {
+          printf("Error raised when closing all HIL ressources: \n");
           print_error(result);
           error_occured = true;
         }

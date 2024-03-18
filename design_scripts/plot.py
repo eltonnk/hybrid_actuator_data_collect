@@ -25,21 +25,25 @@ if __name__ == "__main__":
     t = np.array(df_panto["t"])
     current = np.array(df_panto["current_motor"])
     torque = np.array(df_panto["torque"])
-    omega = np.array(df_panto["omega"])
+    omega = np.array(df_panto["theta"])
+    cmd_voltage_motor = np.array(df_panto["cmd_voltage_motor"])
 
-    fig2, axes = plt.subplots(3, 1)
+    fig2, axes = plt.subplots(4, 1)
 
     axes[0].plot(t, current, 'r')
     axes[1].plot(t, torque, 'g')
     axes[2].plot(t, omega, 'b')
+    axes[3].plot(t, cmd_voltage_motor, 'y')
 
     axes[0].set_ylabel('Current (A)')
     axes[1].set_ylabel('Torque (N)')
     axes[2].set_ylabel(r'$\omega$ (rad/s)')
+    axes[3].set_ylabel(r'Voltage Cmd(V)')
 
     axes[0].set_xlabel('Time (sec)')
     axes[1].set_xlabel('Time (sec)')
     axes[2].set_xlabel('Time (sec)')
+    axes[3].set_xlabel('Time (sec)')
 
     for ax in axes:
         ax.grid()
