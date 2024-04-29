@@ -35,6 +35,11 @@
 #include "quanser_messages.h"
 #include "quanser_thread.h"
 
+/** If defined, will used predefined seeds for the input PRBS signals so that
+ * the test is reproducible. If not, will generate random seeds based on time of day.
+ */
+#define PREDEFINED_SEED
+
 /** Number of samples to collect to compute current sense offsets
  */
 #define N_SAMPLES_CURRENT_OFFSET (2000)
@@ -59,7 +64,7 @@
 
 /** Control frequency (Hz).
  */
-#define FREQUENCY (1000.0)
+#define FREQUENCY (800.0)
 
 /** Encoder ratio for all encoders, before capstans (rad/count).
  */
@@ -276,22 +281,27 @@ int main(int argc, char *argv[])
   t_int16 seed_m;
   t_int16 seed_b;
 
+#ifdef PREDEFINED_SEED
+  seed_m = 4;
+  seed_b = 5;
+#else
   const t_int16 lower = 1;
   const t_int16 upper = 999;
   srand(time(NULL));
   seed_m = lower + rand() % (upper - lower + 1);
   seed_b = lower + rand() % (upper - lower + 1);
+#endif
 
 
-  t_double target_current[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0};
-  // square(N_PAD, 0.1, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[0]);
+  t_double target_current[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0.0};
+  // square(N_PAD, 0.6, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[0]);
   // square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[1]);
 
   const float voltage_m_amp = 0.75;
   const float voltage_m_offset = 0.1;
   smooth_prbs(0.0, N_PAD, voltage_m_offset-voltage_m_amp, voltage_m_offset + voltage_m_amp, 0.005, FREQUENCY, seed_m, 
               N_SAMPLES - N_PAD, target_current[0]);
-  const float voltage_b_amp = 0.07;
+  const float voltage_b_amp = 0.0;
   const float voltage_b_offset = 0.07;
   smooth_prbs(0.0, N_PAD, voltage_b_offset-voltage_b_amp, voltage_b_offset + voltage_b_amp, 0.05, FREQUENCY, seed_b, 
               N_SAMPLES - N_PAD, target_current[1]);
