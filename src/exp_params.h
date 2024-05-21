@@ -11,20 +11,20 @@
  */
 #define N_SAMPLES (12000)
 
-#define PREDEF_SEED_M 4
+// #define PREDEF_SEED_M 4
 
-#define INPUT_VOLT_AMP_M 0.75
+#define INPUT_VOLT_AMP_M 1.8
 
-#define INPUT_VOLT_OFFSET_M 0.1
+// #define INPUT_VOLT_OFFSET_M 0.1
 
-#define INPUT_VOLT_MIN_PERIOD_M 0.005
+#define INPUT_VOLT_MIN_PERIOD_M 5
 
-#define PREDEF_SEED_B 5
+// #define PREDEF_SEED_B 5
 
-#define INPUT_VOLT_AMP_B 0.07
+#define INPUT_VOLT_AMP_B 0.05
 
-#define INPUT_VOLT_OFFSET_B 0.07
+// #define INPUT_VOLT_OFFSET_B 0.07
 
-#define INPUT_VOLT_MIN_PERIOD_B 0.05
+// #define INPUT_VOLT_MIN_PERIOD_B 0.05
 
 #endif  // EXP_PARAMS_H_

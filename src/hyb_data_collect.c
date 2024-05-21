@@ -219,6 +219,9 @@ void chirp(size_t n_pad, double amplitude, double min_freq, double max_freq,
 void square(size_t n_pad, double amplitude, double freq, double duty_cycle,
            double timestep_samp, size_t len, double *out);
 
+void sine(size_t n_pad, double amplitude, double freq, 
+           double f_samp, size_t len, double *out);
+
 
 int main(int argc, char *argv[])
 {
@@ -252,6 +255,9 @@ int main(int argc, char *argv[])
   // Current sample for current sense offset
   t_int32 k_cur_off = 0;
 
+  // Index for state machien state where we wait for brake current steady state
+  t_int32 k_pad = 0;
+
   // Current sample
   t_int32 k = 0;
 
@@ -274,29 +280,36 @@ int main(int argc, char *argv[])
 
   // Desired amplifier output current signal
 
-  t_int16 seed_m;
-  t_int16 seed_b;
+//   t_int16 seed_m;
+//   t_int16 seed_b;
 
-#ifdef PREDEFINED_SEED
-  seed_m = PREDEF_SEED_M;
-  seed_b = PREDEF_SEED_B;
-#else
-  const t_int16 lower = 1;
-  const t_int16 upper = 999;
-  srand(time(NULL));
-  seed_m = lower + rand() % (upper - lower + 1);
-  seed_b = lower + rand() % (upper - lower + 1);
-#endif
+// #ifdef PREDEFINED_SEED
+//   seed_m = PREDEF_SEED_M;
+//   seed_b = PREDEF_SEED_B;
+// #else
+//   const t_int16 lower = 1;
+//   const t_int16 upper = 999;
+//   srand(time(NULL));
+//   seed_m = lower + rand() % (upper - lower + 1);
+//   seed_b = lower + rand() % (upper - lower + 1);
+// #endif
 
 
   t_double target_current[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0.0};
   // square(N_PAD, 0.6, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[0]);
   // square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[1]);
 
-  smooth_prbs(0.0, N_PAD, INPUT_VOLT_OFFSET_M-INPUT_VOLT_AMP_M, INPUT_VOLT_OFFSET_M + INPUT_VOLT_AMP_M, INPUT_VOLT_MIN_PERIOD_M, FREQUENCY, seed_m, 
-              N_SAMPLES - N_PAD, target_current[0]);
-  smooth_prbs(0.0, N_PAD, INPUT_VOLT_OFFSET_B-INPUT_VOLT_AMP_B, INPUT_VOLT_OFFSET_B + INPUT_VOLT_AMP_B, INPUT_VOLT_MIN_PERIOD_B, FREQUENCY, seed_b, 
-              N_SAMPLES - N_PAD, target_current[1]);
+  // smooth_prbs(0.0, N_PAD, INPUT_VOLT_OFFSET_M-INPUT_VOLT_AMP_M, INPUT_VOLT_OFFSET_M + INPUT_VOLT_AMP_M, INPUT_VOLT_MIN_PERIOD_M, FREQUENCY, seed_m, 
+  //             N_SAMPLES - N_PAD, target_current[0]);
+  // smooth_prbs(0.0, N_PAD, INPUT_VOLT_OFFSET_B-INPUT_VOLT_AMP_B, INPUT_VOLT_OFFSET_B + INPUT_VOLT_AMP_B, INPUT_VOLT_MIN_PERIOD_B, FREQUENCY, seed_b, 
+  //             N_SAMPLES - N_PAD, target_current[1]);
+
+  sine(N_PAD, INPUT_VOLT_AMP_M, 1.0/INPUT_VOLT_MIN_PERIOD_M, FREQUENCY, N_SAMPLES - N_PAD, target_current[0]);
+
+  for (int i = 0; i <  N_SAMPLES - N_PAD; i++) {
+    target_current[1][i] = INPUT_VOLT_AMP_B;
+  }
+
 
   // accumulated current offsets (A)
   t_double analog_input_offsets[N_SAMPLES][NUM_ANALOG_IN_CHANNELS] = {0};
@@ -484,16 +497,22 @@ int main(int argc, char *argv[])
         
         break;
       }
-
-      case HYBRID_IDLE:
-      {
+      case HYBRID_IDLE: {
         // Check for interrrupt
         if (sigint) {
           state = HYBRID_STOP_TASK;
           break;
         }
+        
+        // TODO : uncomment section below once the sensors are tested
 
-        // Read encoder
+        analog_outputs[0] = 0.0;
+        analog_outputs[1] = INPUT_VOLT_AMP_B;
+
+        // Saturate current command
+        clamp(analog_outputs, ANALOG_MAX_V, sat_analog_outputs, sat_status);
+
+
         t_error result = hil_task_read_write(
           task, 1, 
           analog_inputs, encoder_counts, 
@@ -501,24 +520,41 @@ int main(int argc, char *argv[])
           sat_analog_outputs, NULL, 
           NULL, NULL
         );
-        
+
         if (result < 0) {
-          printf("Error raised when waiting for user to turn pulley to starting position: \n");
+          printf("Error raised when read/writing to DAC: \n");
           print_error(result);
           state = HYBRID_STOP_TASK;
           error_occured = true;
           break;
         }
-        // Convert encoder counts
-        count_to_rad(encoder_counts, encoder_offsets, axis_0_radians);
-        // Check starting condition, wait for user to turn the pulley to starting position
-        if ((axis_0_radians[0]) >= ANGLE_IDLE ) {
-          // we zero at the new angle after two turns so that we can see deviation around that value.
-          encoder_offsets[0] = encoder_counts[0];
-          state = HYBRID_RUN;
+
+
+      // fail safe if the current command saturation check doesn't stop overcurrent
+      // to be extra safe this would be before the current filtering but it would stop
+      // simulations because of current spikes which were really just noise
+        if (
+          amplifier_output_current[0] >  I_M_MAX || 
+          amplifier_output_current[0] <  -I_M_MAX ||
+          amplifier_output_current[1] >  I_B_MAX || 
+          amplifier_output_current[1] <  -I_B_MAX
+        ){
+          printf("Current going over max allowed current, stopping control loop for safety. \n");
+          state = HYBRID_STOP_TASK;
+          error_occured = true;
         }
+
+      
+        k_pad++;
+        if (k_pad >= N_PAD){
+          state = HYBRID_RUN;
+          break;
+        }
+        
+
         break;
       }
+
 
     
       case HYBRID_RUN: {
@@ -564,16 +600,16 @@ int main(int argc, char *argv[])
       // fail safe if the current command saturation check doesn't stop overcurrent
       // to be extra safe this would be before the current filtering but it would stop
       // simulations because of current spikes which were really just noise
-      if (
-        amplifier_output_current[0] >  I_M_MAX || 
-        amplifier_output_current[0] <  -I_M_MAX ||
-        amplifier_output_current[1] >  I_B_MAX || 
-        amplifier_output_current[1] <  -I_B_MAX
-      ){
-        printf("Current going over max allowed current, stopping control loop for safety. \n");
-        state = HYBRID_STOP_TASK;
-        error_occured = true;
-      }
+        if (
+          amplifier_output_current[0] >  I_M_MAX || 
+          amplifier_output_current[0] <  -I_M_MAX ||
+          amplifier_output_current[1] >  I_B_MAX || 
+          amplifier_output_current[1] <  -I_B_MAX
+        ){
+          printf("Current going over max allowed current, stopping control loop for safety. \n");
+          state = HYBRID_STOP_TASK;
+          error_occured = true;
+        }
 
        
 
@@ -856,3 +892,20 @@ void square(size_t n_pad, double amplitude, double freq, double duty_cycle,
     }
   }
 }
+
+void sine(size_t n_pad, double amplitude, double freq, 
+           double f_samp, size_t len, double *out) {
+  // Chirp rate
+  double c = 2.0 * M_PI* freq / f_samp;
+  // Fill in output array
+  for (int i = 0; i < len; i++) {
+    if (i < n_pad) {
+      out[i] = 0.0;
+    } else {
+      
+      out[i] = amplitude * sin(c* (i - n_pad));
+    }
+  }
+}
+
+
