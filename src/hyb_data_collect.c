@@ -264,6 +264,16 @@ int main(int argc, char *argv[])
   // Timestep
   t_double timestep = 1.0 / FREQUENCY;
 
+  // Integral filter for current controller
+  LtiSys integ_omega;
+  t_double num_integ_omega[] = {timestep, 0};
+  t_double den_integ_omega[] = {-1.0};
+  t_double num_buff_integ_omega[2] = {0};
+  t_double den_buff_integ_omega[1] = {0};
+  ltisys_init(&integ_omega, LTI_SYS_NO_OUTPUT_SAT, num_integ_omega,
+              den_integ_omega, num_buff_integ_omega, den_buff_integ_omega, 2,
+              1);
+
   // Analog output channels in use
   const t_uint32 analog_out_channels[] = {0, 1};
   // Analog input channels in use
@@ -295,19 +305,19 @@ int main(int argc, char *argv[])
 // #endif
 
 
-  t_double target_current[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0.0};
-  // square(N_PAD, 0.6, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[0]);
-  // square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_current[1]);
+  t_double target_signal[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0.0};
+  // square(N_PAD, 0.6, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_signal[0]);
+  // square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_signal[1]);
 
   // smooth_prbs(0.0, N_PAD, INPUT_VOLT_OFFSET_M-INPUT_VOLT_AMP_M, INPUT_VOLT_OFFSET_M + INPUT_VOLT_AMP_M, INPUT_VOLT_MIN_PERIOD_M, FREQUENCY, seed_m, 
-  //             N_SAMPLES - N_PAD, target_current[0]);
+  //             N_SAMPLES - N_PAD, target_signal[0]);
   // smooth_prbs(0.0, N_PAD, INPUT_VOLT_OFFSET_B-INPUT_VOLT_AMP_B, INPUT_VOLT_OFFSET_B + INPUT_VOLT_AMP_B, INPUT_VOLT_MIN_PERIOD_B, FREQUENCY, seed_b, 
-  //             N_SAMPLES - N_PAD, target_current[1]);
+  //             N_SAMPLES - N_PAD, target_signal[1]);
 
-  sine(N_PAD, INPUT_VOLT_AMP_M, 1.0/INPUT_VOLT_MIN_PERIOD_M, FREQUENCY, N_SAMPLES - N_PAD, target_current[0]);
+  sine(N_PAD, INPUT_CMD_OMEGA_AMP_M, 1.0/INPUT_CMD_OMEGA_MIN_PERIOD_M, FREQUENCY, N_SAMPLES - N_PAD, target_signal[0]);
 
   for (int i = 0; i <  N_SAMPLES - N_PAD; i++) {
-    target_current[1][i] = INPUT_VOLT_AMP_B;
+    target_signal[1][i] = INPUT_VOLT_AMP_B;
   }
 
 
@@ -340,12 +350,18 @@ int main(int argc, char *argv[])
   // Angualr velocities for linkages at axis zero in radians/sec
   t_double axis_0_ang_vel[NUM_ENCODER_CHANNELS] = {0.0};
 
+
+
+  t_double motor_amplifier_input_command = 0.0;
+  t_double omega_error =0.0;
+  t_double omega_error_integ= 0.0;
+
   // Set up CSV
   CsvData csv_data;
   csv_data.header =
       "t, cmd_voltage_motor, cmd_voltage_brake, current_motor, current_brake, " 
-      "torque, theta, omega";
-  csv_data.n_col = 8;
+      "torque, theta, omega, omega_cmd";
+  csv_data.n_col = 9;
   csv_data.n_row = N_SAMPLES;
   CsvStatus csv_status  = csv_init(&csv_data);
 
@@ -566,8 +582,12 @@ int main(int argc, char *argv[])
         
         // TODO : uncomment section below once the sensors are tested
 
-        analog_outputs[0] = target_current[0][k];
-        analog_outputs[1] = target_current[1][k];
+        omega_error =  target_signal[0][k] - axis_0_ang_vel[0];
+        omega_error_integ =  ltisys_output(&integ_omega, omega_error);
+        motor_amplifier_input_command = K_M_P * omega_error + K_M_I * omega_error_integ;
+
+        analog_outputs[0] = motor_amplifier_input_command;
+        analog_outputs[1] = target_signal[1][k];
 
         // Saturate current command
         clamp(analog_outputs, ANALOG_MAX_V, sat_analog_outputs, sat_status);
@@ -638,6 +658,7 @@ int main(int argc, char *argv[])
         csv_status |= csv_set((double)torque[0], k, 5, &csv_data);
         csv_status |= csv_set((double)axis_0_radians[0], k, 6, &csv_data);
         csv_status |= csv_set((double)axis_0_ang_vel[0], k, 7, &csv_data);
+        csv_status |= csv_set((double)target_signal[0][k], k, 8, &csv_data);
         // HACK: Using bitewise or here so that any of the above return values
         // which is not zero will set the status as non-zero, even if the 
         // next return values are zero

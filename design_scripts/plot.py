@@ -30,6 +30,7 @@ if __name__ == "__main__":
     omega = np.array(df_panto["omega"])
     cmd_voltage_m = np.array(df_panto["cmd_voltage_motor"])
     cmd_voltage_b = np.array(df_panto["cmd_voltage_brake"])
+    cmd_omega = np.array(df_panto['omega_cmd'])
 
     fig2, axes = plt.subplots(4, 2)
 
@@ -51,6 +52,7 @@ if __name__ == "__main__":
     axes[0][1].plot(t, current_b, 'r')
     axes[1][1].plot(t, torque, 'g')
     axes[2][1].plot(t, omega, 'b')
+    axes[2][1].plot(t, cmd_omega, 'orange')
     axes[3][1].plot(t, cmd_voltage_b, 'y')
 
     axes[0][1].set_ylabel('Brake Current (A)')
