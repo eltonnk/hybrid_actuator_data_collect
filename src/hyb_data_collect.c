@@ -265,14 +265,26 @@ int main(int argc, char *argv[])
   t_double timestep = 1.0 / FREQUENCY;
 
   // Integral filter for current controller
-  LtiSys integ_omega;
-  t_double num_integ_omega[] = {timestep, 0};
-  t_double den_integ_omega[] = {-1.0};
-  t_double num_buff_integ_omega[2] = {0};
-  t_double den_buff_integ_omega[1] = {0};
-  ltisys_init(&integ_omega, LTI_SYS_NO_OUTPUT_SAT, num_integ_omega,
-              den_integ_omega, num_buff_integ_omega, den_buff_integ_omega, 2,
+  LtiSys integ_theta;
+  t_double num_integ_theta[] = {timestep, 0};
+  t_double den_integ_theta[] = {-1.0};
+  t_double num_buff_integ_theta[2] = {0};
+  t_double den_buff_integ_theta[1] = {0};
+  ltisys_init(&integ_theta, LTI_SYS_NO_OUTPUT_SAT, num_integ_theta,
+              den_integ_theta, num_buff_integ_theta, den_buff_integ_theta, 2,
               1);
+
+  // Current sense noise filters
+  LtiSys noise_filter_0;
+  t_double num_noise_filter_0[] = TORQ_NOI_FIL_NUM;
+  t_double den_noise_filter_0[] = TORQ_NOI_FIL_DEN;
+#define NOISE_FILTER_SIZE_NUM_COEFF ARRAY_LENGTH(num_noise_filter_0)
+#define NOISE_FILTER_SIZE_DEN_COEFF ARRAY_LENGTH(den_noise_filter_0)
+  t_double num_buff_noise_filter_0[NOISE_FILTER_SIZE_NUM_COEFF] = {0};
+  t_double den_buff_noise_filter_0[NOISE_FILTER_SIZE_DEN_COEFF] = {0};
+  ltisys_init(&noise_filter_0, LTI_SYS_NO_OUTPUT_SAT, num_noise_filter_0,
+              den_noise_filter_0, num_buff_noise_filter_0, den_buff_noise_filter_0, 
+              NOISE_FILTER_SIZE_NUM_COEFF, NOISE_FILTER_SIZE_DEN_COEFF);
 
   // Analog output channels in use
   const t_uint32 analog_out_channels[] = {0, 1};
@@ -350,18 +362,19 @@ int main(int argc, char *argv[])
   // Angualr velocities for linkages at axis zero in radians/sec
   t_double axis_0_ang_vel[NUM_ENCODER_CHANNELS] = {0.0};
 
-
+  // Low-pass filtered torque sensor output (Nm)
+  t_double filt_torque= 0.0;
 
   t_double motor_amplifier_input_command = 0.0;
-  t_double omega_error =0.0;
-  t_double omega_error_integ= 0.0;
+  t_double theta_error =0.0;
+  t_double theta_error_integ= 0.0;
 
   // Set up CSV
   CsvData csv_data;
   csv_data.header =
       "t, cmd_voltage_motor, cmd_voltage_brake, current_motor, current_brake, " 
-      "torque, theta, omega, omega_cmd";
-  csv_data.n_col = 9;
+      "torque, theta, omega, theta_cmd, filt_torque";
+  csv_data.n_col = 10;
   csv_data.n_row = N_SAMPLES;
   CsvStatus csv_status  = csv_init(&csv_data);
 
@@ -582,12 +595,14 @@ int main(int argc, char *argv[])
         
         // TODO : uncomment section below once the sensors are tested
 
-        omega_error =  target_signal[0][k] - axis_0_ang_vel[0];
-        omega_error_integ =  ltisys_output(&integ_omega, omega_error);
-        motor_amplifier_input_command = K_M_P * omega_error + K_M_I * omega_error_integ;
+        theta_error =  target_signal[0][k] - axis_0_radians[0];
+        theta_error_integ =  ltisys_output(&integ_theta, theta_error);
+        motor_amplifier_input_command = K_M_P * theta_error + K_M_I * theta_error_integ;
 
         analog_outputs[0] = motor_amplifier_input_command;
         analog_outputs[1] = target_signal[1][k];
+
+        
 
         // Saturate current command
         clamp(analog_outputs, ANALOG_MAX_V, sat_analog_outputs, sat_status);
@@ -613,6 +628,8 @@ int main(int argc, char *argv[])
         count_to_rad(encoder_counts, encoder_offsets, axis_0_radians);
         count_to_rad_vel(encoder_count_vel, axis_0_ang_vel);
         volt_sg_to_measurement(analog_inputs, analog_offset, amplifier_output_current, torque);
+
+        filt_torque = ltisys_output(&noise_filter_0, torque[0]);
         
         // Filter DAC inputs
 
@@ -659,6 +676,7 @@ int main(int argc, char *argv[])
         csv_status |= csv_set((double)axis_0_radians[0], k, 6, &csv_data);
         csv_status |= csv_set((double)axis_0_ang_vel[0], k, 7, &csv_data);
         csv_status |= csv_set((double)target_signal[0][k], k, 8, &csv_data);
+        csv_status |= csv_set((double)filt_torque, k, 9, &csv_data);
         // HACK: Using bitewise or here so that any of the above return values
         // which is not zero will set the status as non-zero, even if the 
         // next return values are zero

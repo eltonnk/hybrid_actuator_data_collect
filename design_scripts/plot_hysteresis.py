@@ -28,7 +28,7 @@ if __name__ == "__main__":
     t = np.array(df_panto["t"])
     # current_m = np.array(df_panto["current_motor"])
     # current_b = np.array(df_panto["current_brake"])
-    torque = np.array(df_panto["torque"])
+    torque = np.array(df_panto["filt_torque"])
     omega = np.array(df_panto["omega"])
     # cmd_voltage_m = np.array(df_panto["cmd_voltage_motor"])
     # cmd_voltage_b = np.array(df_panto["cmd_voltage_brake"])
@@ -38,10 +38,7 @@ if __name__ == "__main__":
     # axes.plot(omega, torque, 'r')
 
 
-    # axes.set_ylabel(r'Torque (N)')
-
-
-    # axes.set_xlabel(r'$\omega$ (rad/s)')
+    
 
 
 
@@ -68,9 +65,11 @@ if __name__ == "__main__":
     lc.set_array(t)
     lc.set_linewidth(2)
     line = axs.add_collection(lc)
-    fig.colorbar(line, ax=axs)
+    cbar = fig.colorbar(line, ax=axs)
+    cbar.set_label(r'$t$ (s)')
 
-
+    axs.set_ylabel(r'$\tau$ (N)')
+    axs.set_xlabel(r'$\omega$ (rad/s)')
     axs.set_xlim(omega.min()*1.1, omega.max()*1.1)
     axs.set_ylim(torque.min()*1.1, torque.max()*1.1)
     plt.show()
