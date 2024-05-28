@@ -9,19 +9,24 @@
 
 /** Number of samples to collect.
  */
-#define N_SAMPLES (12000)
+#define N_SAMPLES (24000)
 
 // #define PREDEF_SEED_M 4
 
-#define INPUT_CMD_OMEGA_AMP_M 40
+#define INPUT_CMD_OMEGA_AMP_M_START 10
+
+#define INPUT_CMD_OMEGA_AMP_M_END 0.1
+
+#define INPUT_CMD_OMEGA_NBR_PERIODS 10
+
 
 // #define INPUT_VOLT_OFFSET_M 0.1
 
-#define INPUT_CMD_OMEGA_MIN_PERIOD_M 15
+#define INPUT_CMD_THETA_MIN_PERIOD_M 15
 
 // #define PREDEF_SEED_B 5
 
-#define INPUT_VOLT_AMP_B 0.08
+#define INPUT_VOLT_AMP_B 0.00
 
 // #define INPUT_VOLT_OFFSET_B 0.07
 
@@ -35,12 +40,23 @@
 /** Motor vel controller proportionnal gain
  */
 
-#define K_M_P 0.6
+#define K_M_P 0.95
 
 /** Motor vel controller integral gain
  */
 
 #define K_M_I 0.15
+
+
+/** Derivative time constant for motor angle.
+ */
+#define TAU_THETA (50.0)
+
+
+/** Motor vel controller deriv gain
+ */
+
+#define K_M_D 0.9
 
 #endif  // EXP_PARAMS_H_
 

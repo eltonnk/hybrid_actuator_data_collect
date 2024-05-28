@@ -264,7 +264,7 @@ int main(int argc, char *argv[])
   // Timestep
   t_double timestep = 1.0 / FREQUENCY;
 
-  // Integral filter for current controller
+  // Integral filter for angle controller
   LtiSys integ_theta;
   t_double num_integ_theta[] = {timestep, 0};
   t_double den_integ_theta[] = {-1.0};
@@ -272,6 +272,17 @@ int main(int argc, char *argv[])
   t_double den_buff_integ_theta[1] = {0};
   ltisys_init(&integ_theta, LTI_SYS_NO_OUTPUT_SAT, num_integ_theta,
               den_integ_theta, num_buff_integ_theta, den_buff_integ_theta, 2,
+              1);
+
+  // Derivative filter for angle controller
+  LtiSys deriv_theta;
+  t_double num_deriv_theta[] = {TAU_THETA / (1 + TAU_THETA / FREQUENCY),
+                                -TAU_THETA / (1 + TAU_THETA / FREQUENCY)};
+  t_double den_deriv_theta[] = {-1.0 / (1 + TAU_THETA / FREQUENCY)};
+  t_double num_buff_deriv_theta[2] = {0};
+  t_double den_buff_deriv_theta[1] = {0};
+  ltisys_init(&deriv_theta, LTI_SYS_NO_OUTPUT_SAT, num_deriv_theta,
+              den_deriv_theta, num_buff_deriv_theta, den_buff_deriv_theta, 2,
               1);
 
   // Current sense noise filters
@@ -326,7 +337,17 @@ int main(int argc, char *argv[])
   // smooth_prbs(0.0, N_PAD, INPUT_VOLT_OFFSET_B-INPUT_VOLT_AMP_B, INPUT_VOLT_OFFSET_B + INPUT_VOLT_AMP_B, INPUT_VOLT_MIN_PERIOD_B, FREQUENCY, seed_b, 
   //             N_SAMPLES - N_PAD, target_signal[1]);
 
-  sine(N_PAD, INPUT_CMD_OMEGA_AMP_M, 1.0/INPUT_CMD_OMEGA_MIN_PERIOD_M, FREQUENCY, N_SAMPLES - N_PAD, target_signal[0]);
+  // sine(N_PAD, INPUT_CMD_OMEGA_AMP_M, 1.0/INPUT_CMD_THETA_MIN_PERIOD_M, FREQUENCY, N_SAMPLES - N_PAD, target_signal[0]);
+
+  t_double delta_increment = (INPUT_CMD_OMEGA_AMP_M_START - INPUT_CMD_OMEGA_AMP_M_END) / ((t_double)INPUT_CMD_OMEGA_NBR_PERIODS);
+  
+  int period_len = (N_SAMPLES - N_PAD) / INPUT_CMD_OMEGA_NBR_PERIODS;
+  int j = 0;
+  for (int i = 1; i <  N_SAMPLES - N_PAD; i++) {
+    j = i / period_len;
+    j = j > 0 ? j-1 : 0;
+    target_signal[0][i] = target_signal[0][i-1] + (INPUT_CMD_OMEGA_AMP_M_START - delta_increment*j)*timestep;
+  }
 
   for (int i = 0; i <  N_SAMPLES - N_PAD; i++) {
     target_signal[1][i] = INPUT_VOLT_AMP_B;
@@ -368,6 +389,7 @@ int main(int argc, char *argv[])
   t_double motor_amplifier_input_command = 0.0;
   t_double theta_error =0.0;
   t_double theta_error_integ= 0.0;
+  t_double theta_error_deriv= 0.0;
 
   // Set up CSV
   CsvData csv_data;
@@ -597,7 +619,8 @@ int main(int argc, char *argv[])
 
         theta_error =  target_signal[0][k] - axis_0_radians[0];
         theta_error_integ =  ltisys_output(&integ_theta, theta_error);
-        motor_amplifier_input_command = K_M_P * theta_error + K_M_I * theta_error_integ;
+        theta_error_deriv = ltisys_output(&deriv_theta, theta_error);
+        motor_amplifier_input_command = K_M_P * theta_error + K_M_I * theta_error_integ + K_M_D * theta_error_deriv;
 
         analog_outputs[0] = motor_amplifier_input_command;
         analog_outputs[1] = target_signal[1][k];
