@@ -23,24 +23,24 @@ if __name__ == "__main__":
     df_panto = pd.read_csv(data_files[-1], sep=", ")
 
     t = np.array(df_panto["t"])
-    current_m = np.array(df_panto["current_motor"])
-    current_b = np.array(df_panto["current_brake"])
+    # current_m = np.array(df_panto["current_motor"])
+    # current_b = np.array(df_panto["current_brake"])
     torque = np.array(df_panto["torque"])
-    filt_torque = np.array(df_panto["filt_torque"])
+    # filt_torque = np.array(df_panto["filt_torque"])
     theta = np.array(df_panto["theta"])
     omega = np.array(df_panto["omega"])
-    cmd_voltage_m = np.array(df_panto["cmd_voltage_motor"])
-    cmd_voltage_b = np.array(df_panto["cmd_voltage_brake"])
+    # cmd_voltage_m = np.array(df_panto["cmd_voltage_motor"])
+    # cmd_voltage_b = np.array(df_panto["cmd_voltage_brake"])
     cmd_theta = np.array(df_panto['theta_cmd'])
 
     fig2, axes = plt.subplots(4, 2)
 
-    axes[0][0].plot(t, current_m, 'r')
+    # axes[0][0].plot(t, current_m, 'r')
     axes[1][0].plot(t, torque, 'g')
-    axes[1][0].plot(t, filt_torque, 'orange')
+    # axes[1][0].plot(t, filt_torque, 'orange')
     axes[2][0].plot(t, theta, 'b')
     axes[2][0].plot(t, cmd_theta, 'orange')
-    axes[3][0].plot(t, cmd_voltage_m, 'y')
+    # axes[3][0].plot(t, cmd_voltage_m, 'y')
 
     axes[0][0].set_ylabel('Motor Current (A)')
     axes[1][0].set_ylabel('Torque (N)')
@@ -52,11 +52,11 @@ if __name__ == "__main__":
     axes[2][0].set_xlabel('Time (sec)')
     axes[3][0].set_xlabel('Time (sec)')
 
-    axes[0][1].plot(t, current_b, 'r')
+    # axes[0][1].plot(t, current_b, 'r')
     axes[1][1].plot(t, torque, 'g')
     axes[2][1].plot(t, omega, 'b')
     
-    axes[3][1].plot(t, cmd_voltage_b, 'y')
+    # axes[3][1].plot(t, cmd_voltage_b, 'y')
 
     axes[0][1].set_ylabel('Brake Current (A)')
     axes[1][1].set_ylabel('Torque (N)')

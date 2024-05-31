@@ -394,9 +394,9 @@ int main(int argc, char *argv[])
   // Set up CSV
   CsvData csv_data;
   csv_data.header =
-      "t, cmd_voltage_motor, cmd_voltage_brake, current_motor, current_brake, " 
-      "torque, theta, omega, theta_cmd, filt_torque";
-  csv_data.n_col = 10;
+      "t, " 
+      "torque, theta, omega, theta_cmd";
+  csv_data.n_col = 5;
   csv_data.n_row = N_SAMPLES;
   CsvStatus csv_status  = csv_init(&csv_data);
 
@@ -691,15 +691,15 @@ int main(int argc, char *argv[])
         
 
         CsvStatus csv_status = csv_set((double)(timestep * k), k, 0, &csv_data);
-        csv_status |= csv_set((double)sat_analog_outputs[0], k, 1, &csv_data);
-        csv_status |= csv_set((double)sat_analog_outputs[1], k, 2, &csv_data);
-        csv_status |= csv_set((double)amplifier_output_current[0], k, 3, &csv_data);
-        csv_status |= csv_set((double)amplifier_output_current[1], k, 4, &csv_data);
-        csv_status |= csv_set((double)torque[0], k, 5, &csv_data);
-        csv_status |= csv_set((double)axis_0_radians[0], k, 6, &csv_data);
-        csv_status |= csv_set((double)axis_0_ang_vel[0], k, 7, &csv_data);
-        csv_status |= csv_set((double)target_signal[0][k], k, 8, &csv_data);
-        csv_status |= csv_set((double)filt_torque, k, 9, &csv_data);
+        // csv_status |= csv_set((double)sat_analog_outputs[0], k, 1, &csv_data);
+        // csv_status |= csv_set((double)sat_analog_outputs[1], k, 2, &csv_data);
+        // csv_status |= csv_set((double)amplifier_output_current[0], k, 3, &csv_data);
+        // csv_status |= csv_set((double)amplifier_output_current[1], k, 4, &csv_data);
+        csv_status |= csv_set((double)torque[0], k, 1, &csv_data);
+        csv_status |= csv_set((double)axis_0_radians[0], k, 2, &csv_data);
+        csv_status |= csv_set((double)axis_0_ang_vel[0], k, 3, &csv_data);
+        csv_status |= csv_set((double)target_signal[0][k], k, 4, &csv_data);
+        // csv_status |= csv_set((double)filt_torque, k, 9, &csv_data);
         // HACK: Using bitewise or here so that any of the above return values
         // which is not zero will set the status as non-zero, even if the 
         // next return values are zero
