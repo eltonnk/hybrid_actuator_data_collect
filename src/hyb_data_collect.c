@@ -97,6 +97,8 @@
  */
 #define MESSAGE_LEN (512)
 
+#define DYNAMIC_TABLE_MAX_INDEX  (40)
+
 typedef enum {
   HYBRID_OPEN_BOARD,
   HYBRID_HOME,
@@ -222,6 +224,8 @@ void square(size_t n_pad, double amplitude, double freq, double duty_cycle,
 void sine(size_t n_pad, double amplitude, double freq, 
            double f_samp, size_t len, double *out);
 
+uint32_t compute_estimated_step_lenght(t_double step_vel, uint8_t nbr_desired_turns);
+
 
 int main(int argc, char *argv[])
 {
@@ -328,7 +332,8 @@ int main(int argc, char *argv[])
 // #endif
 
 
-  t_double target_signal[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0.0};
+  //t_double target_signal[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0.0};
+  t_double *target_signal_theta = (t_double*)calloc(N_SAMPLES, sizeof(t_double));
   t_double *target_signal_omega = (t_double*)calloc(N_SAMPLES, sizeof(t_double));
   // square(N_PAD, 0.6, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_signal[0]);
   // square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_signal[1]);
@@ -340,24 +345,46 @@ int main(int argc, char *argv[])
 
   // sine(N_PAD, INPUT_CMD_OMEGA_AMP_M, 1.0/INPUT_CMD_THETA_MIN_PERIOD_M, FREQUENCY, N_SAMPLES - N_PAD, target_signal[0]);
 
-  t_double delta_increment = (INPUT_CMD_OMEGA_AMP_M_START - INPUT_CMD_OMEGA_AMP_M_END) / ((t_double)INPUT_CMD_OMEGA_NBR_PERIODS);
   
-  int period_len = (N_SAMPLES - N_PAD) / INPUT_CMD_OMEGA_NBR_PERIODS;
-  int j = 0;
-  for (int i = 1; i <  N_SAMPLES - N_PAD; i++) {
-    j = i / period_len;
-    j = j > 0 ? j-1 : 0;
-    target_signal[0][i] = target_signal[0][i-1] + (INPUT_CMD_OMEGA_AMP_M_START - delta_increment*j)*timestep;
-    target_signal_omega[i] = (INPUT_CMD_OMEGA_AMP_M_START - delta_increment*j);
+  uint32_t dynamic_table_step_length[DYNAMIC_TABLE_MAX_INDEX] = {0}; // lol
+  t_double dynamic_table_step_amplitude[DYNAMIC_TABLE_MAX_INDEX] = {0};
+  dynamic_table_step_amplitude[0] = INPUT_CMD_OMEGA_AMP_M_START;
+  dynamic_table_step_length[0] = compute_estimated_step_lenght(dynamic_table_step_amplitude[0], 8);
+  uint32_t total_length = dynamic_table_step_length[0];
+  uint8_t i = 0;
+  while(N_SAMPLES - total_length > 0)
+  {
+    dynamic_table_step_amplitude[i+1] = INPUT_CMD_OMEGA_AMP_M_POST_START - INPUT_CMD_OMEGA_AMP_M_STEP*i;
+    dynamic_table_step_length[i + 1] = compute_estimated_step_lenght(dynamic_table_step_amplitude[i+1], 4);
+    total_length += dynamic_table_step_length[i + 1];
+    i++;
+    if (i+1 >= DYNAMIC_TABLE_MAX_INDEX){
+      break;
+    }
   }
 
-  for (int i = 0; i <  N_SAMPLES - N_PAD; i++) {
-    target_signal[1][i] = INPUT_VOLT_AMP_B;
+
+  int j = 0;
+  uint32_t to_remove = 0;
+  for (int i = 1; i <  N_SAMPLES; i++) {
+    if (dynamic_table_step_length[j] <= i - to_remove){
+      to_remove += dynamic_table_step_length[j];
+      j++;
+    }
+    if (j>= DYNAMIC_TABLE_MAX_INDEX){
+      break;
+    }
+    target_signal_theta[i] = target_signal_theta[i-1] + dynamic_table_step_amplitude[j]*timestep;
+    target_signal_omega[i] = dynamic_table_step_amplitude[j];
   }
+
+  // for (int i = 0; i <  N_SAMPLES; i++) {
+  //   target_signal[1][i] = INPUT_VOLT_AMP_B;
+  // }
 
 
   // accumulated current offsets (A)
-  t_double analog_input_offsets[N_SAMPLES][NUM_ANALOG_IN_CHANNELS] = {0};
+  t_double analog_input_offsets[N_SAMPLES_CURRENT_OFFSET][NUM_ANALOG_IN_CHANNELS] = {0};
 
   // Analog values to output (V)
   t_double analog_outputs[NUM_ANALOG_OUT_CHANNELS]= {0.0};
@@ -619,14 +646,14 @@ int main(int argc, char *argv[])
         
         // TODO : uncomment section below once the sensors are tested
 
-        theta_error =  target_signal[0][k] - axis_0_radians[0];
+        theta_error =  target_signal_theta[k] - axis_0_radians[0];
         theta_error_integ =  ltisys_output(&integ_theta, theta_error);
         theta_error_deriv = ltisys_output(&deriv_theta, theta_error);
         motor_amplifier_input_command = K_M_P * theta_error + K_M_I * theta_error_integ + K_M_D * theta_error_deriv;
 
         analog_outputs[0] = motor_amplifier_input_command;
-        analog_outputs[1] = target_signal[1][k];
-
+        // analog_outputs[1] = target_signal[1][k];
+        analog_outputs[1] = 0.0;
         
 
         // Saturate current command
@@ -700,7 +727,7 @@ int main(int argc, char *argv[])
         csv_status |= csv_set((double)torque[0], k, 1, &csv_data);
         csv_status |= csv_set((double)axis_0_radians[0], k, 2, &csv_data);
         csv_status |= csv_set((double)axis_0_ang_vel[0], k, 3, &csv_data);
-        csv_status |= csv_set((double)target_signal[0][k], k, 4, &csv_data);
+        csv_status |= csv_set((double)target_signal_theta[k], k, 4, &csv_data);
         csv_status |= csv_set((double)target_signal_omega[k], k, 5, &csv_data);
         // csv_status |= csv_set((double)filt_torque, k, 9, &csv_data);
         // HACK: Using bitewise or here so that any of the above return values
@@ -973,6 +1000,15 @@ void sine(size_t n_pad, double amplitude, double freq,
       out[i] = amplitude * sin(c* (i - n_pad));
     }
   }
+}
+
+uint32_t compute_estimated_step_lenght(t_double step_vel, uint8_t nbr_desired_turns){
+  t_double timestep = 1.0 / FREQUENCY;
+  t_double radians_desired = 2.0 * M_PI * (t_double) nbr_desired_turns;
+  t_double time_to_achieve_desired_turns = radians_desired/step_vel;
+  printf("Step time: %f, Radians: %f, Step Velocity: %f \n", time_to_achieve_desired_turns, radians_desired, step_vel);
+  uint32_t sample_lenght_step = time_to_achieve_desired_turns / timestep;
+  return sample_lenght_step;
 }
 
 

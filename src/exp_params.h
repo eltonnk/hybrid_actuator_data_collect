@@ -9,16 +9,15 @@
 
 /** Number of samples to collect.
  */
-#define N_SAMPLES (24000)
+#define N_SAMPLES (500000)
 
 // #define PREDEF_SEED_M 4
 
-#define INPUT_CMD_OMEGA_AMP_M_START 8.1
+#define INPUT_CMD_OMEGA_AMP_M_START 10
 
-#define INPUT_CMD_OMEGA_AMP_M_END -1.9
+#define INPUT_CMD_OMEGA_AMP_M_POST_START 1.0
 
-#define INPUT_CMD_OMEGA_NBR_PERIODS 10
-
+#define INPUT_CMD_OMEGA_AMP_M_STEP 0.1
 
 // #define INPUT_VOLT_OFFSET_M 0.1
 
