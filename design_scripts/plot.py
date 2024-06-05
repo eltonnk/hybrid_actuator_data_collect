@@ -32,8 +32,9 @@ if __name__ == "__main__":
     # cmd_voltage_m = np.array(df_panto["cmd_voltage_motor"])
     # cmd_voltage_b = np.array(df_panto["cmd_voltage_brake"])
     cmd_theta = np.array(df_panto['theta_cmd'])
+    cmd_omega = np.array(df_panto['omega_cmd'])
 
-    fig2, axes = plt.subplots(4, 2)
+    fig2, axes = plt.subplots(4, 2, constrained_layout=True, sharex=True)
 
     # axes[0][0].plot(t, current_m, 'r')
     axes[1][0].plot(t, torque, 'g')
@@ -55,6 +56,7 @@ if __name__ == "__main__":
     # axes[0][1].plot(t, current_b, 'r')
     axes[1][1].plot(t, torque, 'g')
     axes[2][1].plot(t, omega, 'b')
+    axes[2][1].plot(t, cmd_omega, 'orange')
     
     # axes[3][1].plot(t, cmd_voltage_b, 'y')
 

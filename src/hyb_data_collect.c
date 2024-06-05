@@ -329,6 +329,7 @@ int main(int argc, char *argv[])
 
 
   t_double target_signal[NUM_ANALOG_OUT_CHANNELS][N_SAMPLES] = {0.0};
+  t_double *target_signal_omega = (t_double*)calloc(N_SAMPLES, sizeof(t_double));
   // square(N_PAD, 0.6, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_signal[0]);
   // square(N_PAD, -0.05, 0.1, 0.5, timestep, N_SAMPLES - N_PAD, target_signal[1]);
 
@@ -347,6 +348,7 @@ int main(int argc, char *argv[])
     j = i / period_len;
     j = j > 0 ? j-1 : 0;
     target_signal[0][i] = target_signal[0][i-1] + (INPUT_CMD_OMEGA_AMP_M_START - delta_increment*j)*timestep;
+    target_signal_omega[i] = (INPUT_CMD_OMEGA_AMP_M_START - delta_increment*j);
   }
 
   for (int i = 0; i <  N_SAMPLES - N_PAD; i++) {
@@ -395,8 +397,8 @@ int main(int argc, char *argv[])
   CsvData csv_data;
   csv_data.header =
       "t, " 
-      "torque, theta, omega, theta_cmd";
-  csv_data.n_col = 5;
+      "torque, theta, omega, theta_cmd, omega_cmd";
+  csv_data.n_col = 6;
   csv_data.n_row = N_SAMPLES;
   CsvStatus csv_status  = csv_init(&csv_data);
 
@@ -699,6 +701,7 @@ int main(int argc, char *argv[])
         csv_status |= csv_set((double)axis_0_radians[0], k, 2, &csv_data);
         csv_status |= csv_set((double)axis_0_ang_vel[0], k, 3, &csv_data);
         csv_status |= csv_set((double)target_signal[0][k], k, 4, &csv_data);
+        csv_status |= csv_set((double)target_signal_omega[k], k, 5, &csv_data);
         // csv_status |= csv_set((double)filt_torque, k, 9, &csv_data);
         // HACK: Using bitewise or here so that any of the above return values
         // which is not zero will set the status as non-zero, even if the 
@@ -825,6 +828,8 @@ int main(int argc, char *argv[])
           csv_print_error(csv_status);
           error_occured = true;
         }
+
+        free(target_signal_omega);
 
         if (error_occured){
           Sleep(10000);
